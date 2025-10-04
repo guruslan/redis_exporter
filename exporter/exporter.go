@@ -48,6 +48,48 @@ type Exporter struct {
 }
 
 type Options struct {
+	User                           string
+	Password                       string
+	SentinelPassword               string
+	Namespace                      string
+	PasswordMap                    map[string]string
+	ConfigCommandName              string
+	CheckKeys                      string
+	CheckSingleKeys                string
+	CheckStreams                   string
+	CheckSingleStreams             string
+	StreamsExcludeConsumerMetrics  bool
+	CheckKeysBatchSize             int64
+	CheckKeyGroups                 string
+	MaxDistinctKeyGroups           int64
+	CountKeys                      string
+	LuaScript                      map[string][]byte
+	ClientCertFile                 string
+	ClientKeyFile                  string
+	CaCertFile                     string
+	InclConfigMetrics              bool
+	InclModulesMetrics             bool
+	DisableExportingKeyValues      bool
+	ExcludeLatencyHistogramMetrics bool
+	RedactConfigMetrics            bool
+	InclSystemMetrics              bool
+	SkipTLSVerification            bool
+	SetClientName                  bool
+	IsTile38                       bool
+	IsCluster                      bool
+	ExportClientList               bool
+	ExportClientsInclPort          bool
+	ConnectionTimeouts             time.Duration
+	MetricsPath                    string
+	RedisMetricsOnly               bool
+	PingOnConnect                  bool
+	RedisPwdFile                   string
+	Registry                       *prometheus.Registry
+	BuildInfo                      BuildInfo
+	BasicAuthUsername              string
+	BasicAuthPassword              string
+	SkipCheckKeysForRoleMaster     bool
+	InclMetricsForEmptyDatabases   bool
 	User                            string
 	Password                        string
 	Namespace                       string
@@ -547,6 +589,7 @@ func NewRedisExporter(uri string, opts Options) (*Exporter, error) {
 	e.mux.HandleFunc("/", e.indexHandler)
 	e.mux.HandleFunc("/scrape", e.scrapeHandler)
 	e.mux.HandleFunc("/discover-cluster-nodes", e.discoverClusterNodesHandler)
+	e.mux.HandleFunc("/discover-sentinel-nodes", e.discoverSentinelNodesHandler)
 	e.mux.HandleFunc("/health", e.healthHandler)
 	e.mux.HandleFunc("/-/reload", e.reloadPwdFile)
 

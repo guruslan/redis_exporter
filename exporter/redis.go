@@ -87,6 +87,36 @@ func (e *Exporter) connectToRedis() (redis.Conn, error) {
 	return c, err
 }
 
+func (e *Exporter) connectToSentinel() (redis.Conn, error) {
+	uri := e.redisAddr
+	if !strings.Contains(uri, "://") {
+		uri = "redis://" + uri
+	}
+
+	options, err := e.configureOptions(uri)
+	if err != nil {
+		return nil, err
+	}
+
+	if e.options.SentinelPassword != "" {
+		options = append(options, redis.DialPassword(e.options.SentinelPassword))
+	}
+
+	log.Debugf("Trying DialURL() for sentinel: %s", uri)
+	c, err := redis.DialURL(uri, options...)
+	if err != nil {
+		log.Debugf("DialURL() for sentinel failed, err: %s", err)
+		if frags := strings.Split(e.redisAddr, "://"); len(frags) == 2 {
+			log.Debugf("Trying sentinel Dial(): %s %s", frags[0], frags[1])
+			c, err = redis.Dial(frags[0], frags[1], options...)
+		} else {
+			log.Debugf("Trying sentinel Dial(): tcp %s", e.redisAddr)
+			c, err = redis.Dial("tcp", e.redisAddr, options...)
+		}
+	}
+	return c, err
+}
+
 func (e *Exporter) connectToRedisCluster() (redis.Conn, error) {
 	uri := e.redisAddr
 	if !strings.Contains(uri, "://") {

@@ -1,6 +1,7 @@
 package exporter
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/gomodule/redigo/redis"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -387,6 +389,79 @@ func TestHttpDiscoverClusterNodesHandlers(t *testing.T) {
 				t.Fatalf(`error, expected string "%s" in body, got body: \n\n%s`, tst.want, body)
 			}
 		})
+	}
+}
+
+func TestHttpDiscoverSentinelNodesHandler(t *testing.T) {
+	sentinelAddr := os.Getenv("TEST_VALKEY_SENTINEL_URI")
+	if sentinelAddr == "" {
+		t.Skipf("TEST_VALKEY_SENTINEL_URI not set - skipping")
+	}
+
+	c, err := redis.DialURL(sentinelAddr)
+	if err != nil {
+		t.Fatalf("Couldn't connect to %#v: %#v", sentinelAddr, err)
+	}
+	defer c.Close()
+
+	masters, err := redis.Values(doRedisCmd(c, "SENTINEL", "MASTERS"))
+	if err != nil {
+		t.Fatalf("Failed to fetch sentinel masters: %v", err)
+	}
+	if len(masters) == 0 {
+		t.Skip("sentinel returned no masters")
+	}
+
+	masterDetail, err := redis.StringMap(masters[0], nil)
+	if err != nil {
+		t.Fatalf("Failed to parse sentinel master details: %v", err)
+	}
+
+	masterName, ok := masterDetail["name"]
+	if !ok || masterName == "" {
+		t.Skip("sentinel master has no name")
+	}
+
+	e, _ := NewRedisExporter(sentinelAddr, Options{Namespace: "test"})
+	ts := httptest.NewServer(e)
+	defer ts.Close()
+
+	body := downloadURL(t, fmt.Sprintf("%s/discover-sentinel-nodes?mastername=%s", ts.URL, url.QueryEscape(masterName)))
+
+	var discovery []struct {
+		Targets []string          `json:"targets"`
+		Labels  map[string]string `json:"labels"`
+	}
+	if err := json.Unmarshal([]byte(body), &discovery); err != nil {
+		t.Fatalf("failed to decode discovery response: %v", err)
+	}
+	if len(discovery) == 0 {
+		t.Fatalf("expected at least one discovery target, got: %s", body)
+	}
+
+	foundMaster := false
+	for _, entry := range discovery {
+		switch entry.Labels["role"] {
+		case "master":
+			foundMaster = true
+		case "replica":
+		case "":
+			t.Fatalf("discovery entry missing role label: %v", entry)
+		default:
+			t.Fatalf("unexpected role label %q", entry.Labels["role"])
+		}
+	}
+
+	if !foundMaster {
+		t.Fatalf("expected to find master entry in discovery response: %v", discovery)
+	}
+
+	status, missingParamBody := downloadURLWithStatusCode(t, ts.URL+"/discover-sentinel-nodes")
+	if status != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for missing mastername, got %d", status)
+	}
+	if !strings.Contains(missingParamBody, "'mastername' parameter must be specified") {
+		t.Fatalf("expected error message for missing mastername, got: %s", missingParamBody)
 	}
 }
 

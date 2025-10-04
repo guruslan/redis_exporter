@@ -151,6 +151,59 @@ func (e *Exporter) discoverClusterNodesHandler(w http.ResponseWriter, r *http.Re
 	_, _ = w.Write(data)
 }
 
+func (e *Exporter) discoverSentinelNodesHandler(w http.ResponseWriter, r *http.Request) {
+	masterName := r.URL.Query().Get("mastername")
+	if masterName == "" {
+		http.Error(w, "'mastername' parameter must be specified", http.StatusBadRequest)
+		return
+	}
+
+	c, err := e.connectToSentinel()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Couldn't connect to redis sentinel: %s", err), http.StatusInternalServerError)
+		return
+	}
+	defer c.Close()
+
+	nodes, err := e.getSentinelNodes(c, masterName)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to fetch sentinel nodes: %s", err), http.StatusInternalServerError)
+		return
+	}
+
+	discovery := make([]struct {
+		Targets []string          `json:"targets"`
+		Labels  map[string]string `json:"labels"`
+	}, 0, len(nodes))
+
+	isTLS := strings.HasPrefix(e.redisAddr, "rediss://")
+	for _, node := range nodes {
+		scheme := "redis://"
+		if isTLS {
+			scheme = "rediss://"
+		}
+
+		discovery = append(discovery, struct {
+			Targets []string          `json:"targets"`
+			Labels  map[string]string `json:"labels"`
+		}{
+			Targets: []string{scheme + node.address},
+			Labels: map[string]string{
+				"role": node.role,
+			},
+		})
+	}
+
+	data, err := json.MarshalIndent(discovery, "", "  ")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to marshal discovery data: %s", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(data)
+}
+
 func (e *Exporter) reloadPwdFile(w http.ResponseWriter, r *http.Request) {
 	if e.options.RedisPwdFile == "" {
 		http.Error(w, "There is no pwd file specified", http.StatusBadRequest)
