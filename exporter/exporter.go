@@ -50,6 +50,7 @@ type Exporter struct {
 type Options struct {
 	User                           string
 	Password                       string
+	SentinelPassword               string
 	Namespace                      string
 	PasswordMap                    map[string]string
 	ConfigCommandName              string
@@ -546,6 +547,7 @@ func NewRedisExporter(uri string, opts Options) (*Exporter, error) {
 	e.mux.HandleFunc("/", e.indexHandler)
 	e.mux.HandleFunc("/scrape", e.scrapeHandler)
 	e.mux.HandleFunc("/discover-cluster-nodes", e.discoverClusterNodesHandler)
+	e.mux.HandleFunc("/discover-sentinel-nodes", e.discoverSentinelNodesHandler)
 	e.mux.HandleFunc("/health", e.healthHandler)
 	e.mux.HandleFunc("/-/reload", e.reloadPwdFile)
 

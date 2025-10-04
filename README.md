@@ -86,6 +86,29 @@ scrape_configs:
       - target_label: __address__
         replacement: <<REDIS-EXPORTER-HOSTNAME>>:9121
 
+
+### Prometheus Configuration to Discover Redis Nodes via Sentinel
+
+The exporter exposes `/discover-sentinel-nodes?mastername=<MASTER_NAME>` when it is pointed at a Redis Sentinel. The endpoint queries the sentinel for the specified master and its replicas and returns HTTP service discovery data with a `role` label identifying whether the target is a master (`master`) or a replica (`replica`).
+
+```yaml
+scrape_configs:
+  - job_name: 'redis_exporter_sentinel_nodes'
+    http_sd_configs:
+      - url: http://<<REDIS-EXPORTER-HOSTNAME>>:9121/discover-sentinel-nodes?mastername=<<MASTER_NAME>>
+        refresh_interval: 10m
+    metrics_path: /scrape
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: <<REDIS-EXPORTER-HOSTNAME>>:9121
+```
+
+You can provide a sentinel-specific password via `--sentinel.password` (or `REDIS_SENTINEL_PASSWORD`) when the sentinel requires a different credential than the monitored nodes.
+
   ## config for scraping the exporter itself
   - job_name: 'redis_exporter'
     static_configs:
@@ -170,6 +193,9 @@ scrape_configs:
 | redis.addr                          | REDIS_ADDR                                       | Address of the Redis instance, defaults to `redis://localhost:6379`. If TLS is enabled, the address must be like the following `rediss://localhost:6379`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | redis.user                          | REDIS_USER                                       | User name to use for authentication (Redis ACL for Redis 6.0 and newer).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | redis.password                      | REDIS_PASSWORD                                   | Password of the Redis instance, defaults to `""` (no password).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| sentinel.password                   | REDIS_SENTINEL_PASSWORD                          | Password of the Redis Sentinel instance used for discovery, defaults to `""` (no password).
+
+                                                                               |
 | redis.password-file                 | REDIS_PASSWORD_FILE                              | Password file of the Redis instance to scrape, defaults to `""` (no password file).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | check-keys                          | REDIS_EXPORTER_CHECK_KEYS                        | Comma separated list of key patterns to export value and length/size, eg: `db3=user_count` will export key `user_count` from db `3`. db defaults to `0` if omitted. The key patterns specified with this flag will be found using [SCAN](https://valkey.io/commands/scan).  Use this option if you need glob pattern matching; `check-single-keys` is faster for non-pattern keys. Warning: using `--check-keys` to match a very large number of keys can slow down the exporter to the point where it doesn't finish scraping the redis instance. --check-keys doesn't work in cluster mode as "SCAN" does not work across multiple instances. |
 | check-single-keys                   | REDIS_EXPORTER_CHECK_SINGLE_KEYS                 | Comma separated list of keys to export value and length/size, eg: `db3=user_count` will export key `user_count` from db `3`. db defaults to `0` if omitted.  The keys specified with this flag will be looked up directly without any glob pattern matching.  Use this option if you don't need glob pattern matching;  it is faster than `check-keys`.                                                                                                                                                                                                                                                                                         |
